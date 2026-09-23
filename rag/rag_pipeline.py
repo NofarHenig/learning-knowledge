@@ -26,12 +26,14 @@ class RagPipeline:
     def ask(
         self,
         question: str,
+        collection: str,
         top_k: int = 3
     ) -> RagResult:
         question_embedding = self.embedder.embed([question])[0]
 
         documents = self.vector_store.search(
             query_embedding=question_embedding,
+            collection=collection,
             top_k=top_k
         )
 

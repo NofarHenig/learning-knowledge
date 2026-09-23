@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import psycopg
@@ -23,10 +24,12 @@ class PostgresVectorStore:
 
         with self.connection.cursor() as cursor:
             for document, embedding in zip(documents, embeddings):
-                lecture_id = document.metadata["lecture_id"]
-                chunk_index = document.metadata["chunk_index"]
+                collection = document.metadata["collection"]
 
-                chunk_id = f"udemy_{lecture_id}_{chunk_index}"
+                chunk_id = self._create_chunk_id(
+                    document=document,
+                    collection=collection
+                )
 
                 cursor.execute(
                     """
@@ -51,6 +54,7 @@ class PostgresVectorStore:
     def search(
         self,
         query_embedding: list[float],
+        collection: str,
         top_k: int = 3
     ) -> list[Document]:
         with self.connection.cursor() as cursor:
@@ -58,10 +62,12 @@ class PostgresVectorStore:
                 """
                 SELECT text, metadata
                 FROM chunks
+                WHERE metadata->>'collection' = %s
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
                 (
+                    collection,
                     query_embedding,
                     top_k
                 )
@@ -80,3 +86,23 @@ class PostgresVectorStore:
             )
 
         return documents
+
+    def _create_chunk_id(
+        self,
+        document: Document,
+        collection: str
+    ) -> str:
+        metadata_json = json.dumps(
+            document.metadata,
+            sort_keys=True
+        )
+
+        identity = (
+            f"{collection}|"
+            f"{metadata_json}|"
+            f"{document.text}"
+        )
+
+        return hashlib.sha256(
+            identity.encode("utf-8")
+        ).hexdigest()

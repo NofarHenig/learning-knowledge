@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-from ingestion.udemy_source import UdemySource
+from ingestion.source_factory import create_source
 from rag.chunker import chunk_document
 from rag.openai_embedder import OpenAIEmbedder
 from rag.postgres_vector_store import PostgresVectorStore
@@ -14,10 +14,22 @@ BATCH_SIZE = 50
 load_dotenv()
 
 connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
+collection = os.getenv("KNOWLEDGE_COLLECTION")
+source_path = os.getenv("KNOWLEDGE_SOURCE")
 
 if not connection_string:
     raise ValueError(
         "POSTGRES_CONNECTION_STRING is not configured"
+    )
+
+if not collection:
+    raise ValueError(
+        "KNOWLEDGE_COLLECTION is not configured"
+    )
+
+if not source_path:
+    raise ValueError(
+        "KNOWLEDGE_SOURCE is not configured"
     )
 
 embedder = OpenAIEmbedder()
@@ -26,9 +38,9 @@ vector_store = PostgresVectorStore(
     connection_string=connection_string
 )
 
-source = UdemySource(
-    lectures_file="data/lectures.json",
-    captions_file="data/lecture_captions.json"
+source = create_source(
+    source=source_path,
+    collection=collection
 )
 
 documents = source.load()
@@ -39,6 +51,8 @@ for document in documents:
     document_chunks = chunk_document(document)
     chunks.extend(document_chunks)
 
+print(f"Source: {source_path}")
+print(f"Collection: {collection}")
 print(f"Loaded {len(documents)} documents")
 print(f"Created {len(chunks)} chunks")
 
@@ -65,4 +79,7 @@ for start_index in range(0, len(chunks), BATCH_SIZE):
         f"{start_index + len(batch)}"
     )
 
-print(f"Indexed {len(chunks)} chunks")
+print(
+    f"Indexed {len(chunks)} chunks "
+    f"into collection '{collection}'"
+)

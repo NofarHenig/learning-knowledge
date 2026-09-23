@@ -11,10 +11,16 @@ from rag.rag_pipeline import RagPipeline
 load_dotenv()
 
 connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
+collection = os.getenv("KNOWLEDGE_COLLECTION")
 
 if not connection_string:
     raise ValueError(
         "POSTGRES_CONNECTION_STRING is not configured"
+    )
+
+if not collection:
+    raise ValueError(
+        "KNOWLEDGE_COLLECTION is not configured"
     )
 
 embedder = OpenAIEmbedder()
@@ -31,9 +37,15 @@ rag = RagPipeline(
     generator=generator
 )
 
-question = "Why should I learn Python?"
+question = "How do I reverse a string in Python?"
 
-result = rag.ask(question)
+result = rag.ask(
+    question=question,
+    collection=collection
+)
+
+print("\nCollection:")
+print(collection)
 
 print("\nQuestion:")
 print(question)

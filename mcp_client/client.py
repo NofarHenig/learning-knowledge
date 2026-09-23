@@ -10,6 +10,13 @@ load_dotenv()
 
 
 async def main():
+    collection = os.getenv("KNOWLEDGE_COLLECTION")
+
+    if not collection:
+        raise ValueError(
+            "KNOWLEDGE_COLLECTION is not configured"
+        )
+
     question = input("Enter your question: ")
 
     server = StdioServerParameters(
@@ -32,11 +39,15 @@ async def main():
             print(f"- {tool.name}")
 
         result = await client.call_tool(
-            "ask_course",
+            "ask_knowledge",
             {
-                "question": question
+                "question": question,
+                "collection": collection
             }
         )
+
+        print("\nCollection:")
+        print(collection)
 
         print("\nAnswer:")
 

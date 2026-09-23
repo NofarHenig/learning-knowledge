@@ -4,3 +4,4 @@ python-dotenv
 psycopg[binary]
 pgvector
 mcp[cli]
+pypdf

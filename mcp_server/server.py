@@ -38,14 +38,26 @@ server = MCPServer("learning-knowledge")
 
 
 @server.tool()
-def ask_course(question: str) -> str:
-    """Answer a question using the indexed course material."""
-    result = rag.ask(question)
+def ask_knowledge(
+    question: str,
+    collection: str
+) -> str:
+    """
+    Answer a question using material from the selected
+    knowledge collection.
+    """
+    result = rag.ask(
+        question=question,
+        collection=collection
+    )
 
     source_titles = []
 
     for document in result.sources:
-        title = document.metadata.get("title", "Unknown source")
+        title = document.metadata.get(
+            "title",
+            "Unknown source"
+        )
 
         if title not in source_titles:
             source_titles.append(title)

@@ -1,5 +1,7 @@
 from typing import Protocol
+
 from ingestion.source import Document
+
 
 class VectorStore(Protocol):
     def add(
@@ -12,6 +14,7 @@ class VectorStore(Protocol):
     def search(
         self,
         query_embedding: list[float],
+        collection: str,
         top_k: int = 3
     ) -> list[Document]:
         ...

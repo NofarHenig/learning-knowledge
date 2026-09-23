@@ -12,10 +12,12 @@ class UdemySource:
         self,
         lectures_file: str,
         captions_file: str,
+        collection: str,
         limit: int | None = None
     ):
         self.lectures_file = Path(lectures_file)
         self.captions_file = Path(captions_file)
+        self.collection = collection
         self.limit = limit
 
     def load(self) -> list[Document]:
@@ -75,6 +77,7 @@ class UdemySource:
                     text=text,
                     metadata={
                         "source": "udemy",
+                        "collection": self.collection,
                         "lecture_id": lecture_id,
                         "title": title,
                         "asset_id": lecture["asset_id"]
