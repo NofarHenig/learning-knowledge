@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+      POSTGRES_DB: learning_knowledge
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  ingest:
+    build: .
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_CONNECTION_STRING: postgresql://raguser:ragpassword@postgres:5432/learning_knowledge
+    command: ["python", "ingest.py"]
+
+  app:
+    build: .
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_CONNECTION_STRING: postgresql://raguser:ragpassword@postgres:5432/learning_knowledge
+    command: ["python", "ask.py"]

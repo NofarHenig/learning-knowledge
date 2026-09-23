@@ -1,0 +1,11 @@
+# Course-specific data
+data/lecture_captions.json
+data/lectures.json
+
+# Python
+*.pyc
+__pycache__/
+
+# Environment
+.env
+.venv/
