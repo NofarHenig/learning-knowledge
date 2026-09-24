@@ -1,79 +1,126 @@
-# Learning Knowledge
+# Learning Material RAG
 
-A reusable Retrieval-Augmented Generation (RAG) system that turns learning material into searchable knowledge collections and exposes them to AI clients through MCP.
+A reusable Retrieval-Augmented Generation (RAG) system for asking questions about indexed learning materials.
 
-The system supports multiple content sources and independent knowledge collections, allowing the same RAG pipeline to query different sets of learning material without coupling retrieval to a specific source or application.
+The system ingests learning content, converts it into searchable vector embeddings, retrieves the most relevant material for a question, and generates grounded answers with sources.
+
+It supports multiple independent knowledge collections and exposes the RAG pipeline through an MCP server so AI clients and agents can use it as a tool.
 
 ## Architecture
 
 ```text
 Learning Material
-      |
-      v
-Source Factory
-      |
-      +---- PDF
-      |
-      +---- TXT
-      |
-      +---- Directory
-      |
-      v
-Documents
-      |
-      v
+PDF / TXT / Directory
+        |
+        v
+Source Adapter
+        |
+        v
+Normalized Documents
+        |
+        v
 Chunking
-      |
-      v
-Embeddings
-      |
-      v
+        |
+        v
+OpenAI Embeddings
+        |
+        v
 PostgreSQL + pgvector
-      |
-      v
-Knowledge Collections
-      |
-      v
-Semantic Retrieval
-      |
-      v
-LLM Generation
-      |
-      v
-Answer + Sources
-      |
-      v
+        |
+        |  indexed by collection
+        v
+--------------------------------
+        |
+        | Query
+        v
+MCP Client / AI Agent
+        |
+        v
+ask_knowledge(question, collection)
+        |
+        v
 MCP Server
-      |
-      v
-AI Client / Agent
+        |
+        v
+RAG Pipeline
+        |
+        +-------------------+
+        |                   |
+        v                   v
+   Vector Search          LLM
+        |                   |
+        +---------> Context-+
+                            |
+                            v
+                   Grounded Answer
+                     + Sources
 ```
 
 ## How It Works
 
-### 1. Generic Ingestion
+### 1. Ingestion
 
-Learning material is converted into a common `Document` representation containing text and metadata.
+Learning material is loaded through a source adapter and normalized into a common `Document` representation.
 
-The ingestion layer currently supports:
+Currently supported sources:
 
 - PDF files
 - Text files
 - Directories containing text files
 
-A `SourceFactory` selects the appropriate loader based on the provided source.
+The source architecture is extensible, so additional content providers can be added without changing the shared RAG pipeline.
 
-Each loader returns the same representation:
+### 2. Chunking
 
-```text
-list[Document]
-```
+Documents are split into smaller chunks before indexing.
 
-This keeps the rest of the RAG pipeline independent from the original content source and makes it possible to add new source adapters without changing the retrieval pipeline.
+Each chunk preserves metadata from its original document, including information such as:
 
-### 2. Knowledge Collections
+- Source
+- Collection
+- Title
+- Page number when available
+- Chunk index
 
-Indexed material is organized into independent knowledge collections.
+### 3. Embeddings
+
+Each chunk is converted into a vector embedding using OpenAI embeddings.
+
+The current implementation uses:
+
+`text-embedding-3-small`
+
+### 4. Vector Storage
+
+Embeddings and document metadata are stored in PostgreSQL using the `pgvector` extension.
+
+Each chunk receives a deterministic ID and is written using an UPSERT, making ingestion idempotent.
+
+### 5. Retrieval
+
+When a question is asked:
+
+1. The question is converted into an embedding.
+2. pgvector performs semantic similarity search.
+3. Retrieval is restricted to the requested knowledge collection.
+4. The most relevant chunks are returned.
+
+This prevents unrelated collections from being mixed during retrieval.
+
+### 6. Generation
+
+The retrieved chunks are passed to the language model as context.
+
+The model is instructed to answer using only the retrieved material and to state when the available context is insufficient.
+
+The result contains:
+
+- The generated answer
+- The retrieved sources
+
+## Knowledge Collections
+
+The system supports multiple independent knowledge bases using collections.
 
 For example:
 
@@ -84,63 +131,7 @@ system-design
 company-training
 ```
 
-Each document and chunk is associated with a collection.
-
-Queries are scoped to a selected collection so unrelated learning material is not mixed during retrieval.
-
-### 3. Chunking
-
-Documents are split into smaller chunks before indexing.
-
-Each chunk preserves the metadata of its original document, including information such as its collection, source, title, and page when available.
-
-### 4. Embeddings
-
-Chunks are converted into vector embeddings using OpenAI embeddings.
-
-The same embedding model is used to convert user questions into vectors so that semantically related content can be retrieved.
-
-### 5. Vector Search
-
-Embeddings are stored in PostgreSQL using the pgvector extension.
-
-When a question is asked, the system searches only the selected collection and uses cosine distance to retrieve the most semantically relevant chunks.
-
-```text
-Question
-   |
-   v
-Embedding
-   |
-   v
-Selected Collection
-   |
-   v
-Vector Similarity Search
-   |
-   v
-Top-K Relevant Chunks
-```
-
-### 6. RAG Generation
-
-The retrieved chunks are provided to the LLM as context.
-
-The model is instructed to answer using only the retrieved learning material and to report when the available context is insufficient.
-
-The result contains both the generated answer and retrieved source information.
-
-### 7. MCP
-
-The RAG pipeline is exposed through a Model Context Protocol (MCP) server.
-
-The main MCP tool is:
-
-```text
-ask_knowledge(question, collection)
-```
-
-For example:
+A query is always scoped to a collection:
 
 ```text
 ask_knowledge(
@@ -149,324 +140,381 @@ ask_knowledge(
 )
 ```
 
-The MCP server supports both local stdio communication and Streamable HTTP for remote deployments.
+This allows the same RAG infrastructure to serve many independent sets of learning material.
 
-This keeps the RAG implementation independent from a specific AI application and allows MCP-compatible clients or agents to use the knowledge base as a tool.
+## MCP Integration
 
-## Example
+The RAG pipeline is exposed through Model Context Protocol (MCP).
 
-Given a Python learning collection:
-
-```text
-Question:
-How do I reverse a string in Python?
-
-Collection:
-python-course
-```
-
-The flow is:
+The server provides the tool:
 
 ```text
-Question
-   |
-   v
-Embedding
-   |
-   v
-Search python-course
-   |
-   v
-Top-K Chunks
-   |
-   v
-LLM
-   |
-   v
-Answer + Sources
+ask_knowledge(question, collection)
 ```
 
-The same pipeline can query a completely different collection without changing the RAG implementation:
+This separates the RAG implementation from the AI client using it.
 
-```text
-Question:
-What is an IAM role?
+Any compatible MCP client can interact with the knowledge base without needing to know how ingestion, embeddings, retrieval, or generation are implemented internally.
 
-Collection:
-aws-course
-```
+The MCP server supports:
 
-## Adding Learning Material
+- Local `stdio` transport
+- Remote Streamable HTTP transport
+- Bearer authentication for remote access
 
-The ingestion pipeline accepts a source and a collection name through configuration.
+## Authentication
 
-For example, to index a PDF:
+Remote MCP access is protected using Bearer authentication.
 
-```text
-KNOWLEDGE_COLLECTION=aws-course
-KNOWLEDGE_SOURCE=materials/aws.pdf
-```
+Requests without a valid access token are rejected before the MCP tool is executed.
 
-The system automatically selects the appropriate loader and runs:
+The access token is provided to the application through environment configuration and is not stored in the repository.
 
-```text
-PDF
- |
- v
-Documents
- |
- v
-Chunks
- |
- v
-Embeddings
- |
- v
-aws-course
-```
+In the AWS deployment, the token is stored in AWS Secrets Manager and injected into the ECS container at runtime.
 
-A text file or directory can be indexed through the same pipeline by changing `KNOWLEDGE_SOURCE`.
+This keeps authentication credentials separate from the application code and Docker image.
 
-## Tech Stack
+## Technology Stack
+
+### Application
 
 - Python
 - OpenAI API
+- MCP
+- Docker
+
+### RAG
+
+- OpenAI embeddings
 - PostgreSQL
 - pgvector
-- Docker / Docker Compose
-- Model Context Protocol (MCP)
-- pypdf
-- AWS ECS Fargate
+
+### AWS
+
+- Amazon ECS Fargate
+- Amazon ECR
 - Amazon Aurora PostgreSQL
+- pgvector
 - AWS IAM
 - AWS Secrets Manager
-- Amazon ECR
 - Amazon CloudWatch
 - boto3
+
+## AWS Deployment
+
+The system has been containerized and deployed to AWS.
+
+The cloud architecture uses:
+
+```text
+MCP Client
+     |
+     | Bearer Authentication
+     v
+Amazon ECS Fargate
+     |
+     | IAM Database Authentication
+     v
+Amazon Aurora PostgreSQL
+     |
+     v
+pgvector
+```
+
+The Docker image is stored in Amazon ECR.
+
+The application runs as an ECS Fargate task and connects to Aurora PostgreSQL using IAM database authentication rather than a stored database password.
+
+Sensitive values such as the OpenAI API key and MCP access token are stored in AWS Secrets Manager and injected into the container at runtime.
+
+CloudWatch is used for container logging.
+
+The complete cloud flow has been tested end-to-end:
+
+```text
+Authenticated MCP Request
+        |
+        v
+ECS Fargate
+        |
+        v
+ask_knowledge
+        |
+        v
+Question Embedding
+        |
+        v
+Aurora PostgreSQL + pgvector
+        |
+        v
+Relevant Learning Material
+        |
+        v
+LLM Generation
+        |
+        v
+Grounded Answer + Sources
+```
+
+Remote MCP authentication was also verified by confirming that unauthenticated requests are rejected while authenticated MCP requests are accepted.
+
+## Database Authentication
+
+The AWS deployment uses IAM authentication for Aurora PostgreSQL.
+
+Instead of storing a database password, the application generates a temporary authentication token using `boto3`.
+
+The ECS task role is granted permission to connect to the database through IAM.
+
+This reduces the need for long-lived database credentials inside the application environment.
+
+## Local Development
+
+### Requirements
+
+- Docker
+- Docker Compose
+- OpenAI API key
+
+### Environment
+
+Create a `.env` file based on `.env.example`.
+
+Example:
+
+```text
+OPENAI_API_KEY=your_openai_api_key_here
+POSTGRES_CONNECTION_STRING=postgresql://raguser:ragpassword@localhost:5432/learning_knowledge
+KNOWLEDGE_COLLECTION=example-collection
+KNOWLEDGE_SOURCE=materials/example.pdf
+```
+
+Never commit the real `.env` file.
+
+### Start PostgreSQL
+
+```bash
+docker compose up -d postgres
+```
+
+### Ingest Learning Material
+
+Configure:
+
+```text
+KNOWLEDGE_COLLECTION=example-collection
+KNOWLEDGE_SOURCE=materials/example.pdf
+```
+
+Then run:
+
+```bash
+docker compose run --rm ingest
+```
+
+The ingestion pipeline:
+
+1. Loads the source.
+2. Normalizes it into documents.
+3. Splits documents into chunks.
+4. Generates embeddings.
+5. Stores the chunks and vectors in PostgreSQL.
+
+### Ask a Question
+
+```bash
+docker compose run --rm app
+```
+
+The application retrieves relevant chunks from the configured collection and generates a grounded answer.
+
+## Running the MCP Server
+
+### Local stdio
+
+```bash
+python -m mcp_server.server
+```
+
+### Streamable HTTP
+
+Set:
+
+```text
+MCP_TRANSPORT=streamable-http
+MCP_ACCESS_TOKEN=your_secure_token
+MCP_RESOURCE_URL=http://localhost:8000/mcp
+```
+
+Then run:
+
+```bash
+python -m mcp_server.server
+```
+
+The MCP endpoint is available at:
+
+```text
+http://localhost:8000/mcp
+```
+
+Remote HTTP access requires a valid Bearer token.
 
 ## Project Structure
 
 ```text
 learning-knowledge/
+├── db/
+│   └── init.sql
 ├── ingestion/
 │   ├── source.py
 │   ├── source_factory.py
 │   ├── text_source.py
 │   ├── directory_source.py
 │   └── pdf_source.py
-│
+├── materials/
+├── mcp_client/
+│   └── client.py
+├── mcp_server/
+│   └── server.py
 ├── rag/
 │   ├── chunker.py
+│   ├── database_connection.py
 │   ├── embedder.py
 │   ├── generator.py
 │   ├── openai_embedder.py
 │   ├── openai_generator.py
-│   ├── vector_store.py
 │   ├── postgres_vector_store.py
-│   ├── database_connection.py
-│   └── rag_pipeline.py
-│
-├── mcp_server/
-│   └── server.py
-│
-├── mcp_client/
-│   └── client.py
-│
-├── db/
-│   └── init.sql
-│
-├── materials/
-├── ingest.py
+│   ├── rag_pipeline.py
+│   └── vector_store.py
 ├── ask.py
-├── SKILL.md
+├── ingest.py
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
-└── .env.example
+├── SKILL.md
+└── README.md
 ```
-
-## Configuration
-
-Create a `.env` file based on `.env.example`:
-
-```text
-OPENAI_API_KEY=your_openai_api_key_here
-
-POSTGRES_CONNECTION_STRING=postgresql://raguser:ragpassword@localhost:5432/learning_knowledge
-
-KNOWLEDGE_COLLECTION=aws-course
-
-KNOWLEDGE_SOURCE=materials/aws.pdf
-```
-
-Never commit the real `.env` file or API keys.
-
-For AWS deployments, the application can connect to Aurora PostgreSQL using IAM database authentication instead of storing a database password.
-
-## Running Locally
-
-Start PostgreSQL:
-
-```bash
-docker compose up -d postgres
-```
-
-Build the ingestion image:
-
-```bash
-docker compose build ingest
-```
-
-Index the configured learning material:
-
-```bash
-docker compose run --rm ingest
-```
-
-Run the MCP client:
-
-```bash
-python -m mcp_client.client
-```
-
-Then enter a question about the selected knowledge collection.
-
-## AWS Deployment
-
-The project has also been deployed and tested end-to-end on AWS.
-
-```text
-AI Client
-    |
-    | MCP / Streamable HTTP
-    v
-Amazon ECS Fargate
-    |
-    | RAG Pipeline
-    |
-    +------> OpenAI
-    |
-    v
-Amazon Aurora PostgreSQL
-    |
-    v
-pgvector
-```
-
-The Docker image is stored in Amazon ECR and executed using ECS Fargate.
-
-Aurora PostgreSQL stores the indexed chunks and vector embeddings using pgvector.
-
-The Fargate task uses an IAM role to generate temporary authentication tokens for Aurora instead of storing a database password.
-
-The OpenAI API key is provided to the container through AWS Secrets Manager.
-
-Application logs are written to Amazon CloudWatch.
-
-The remote MCP server uses Streamable HTTP and has been tested end-to-end with the `ask_knowledge` tool against an indexed collection stored in Aurora.
-
-The repository intentionally does not contain account-specific AWS deployment configuration, resource identifiers, credentials, or secrets.
 
 ## Design Decisions
 
 ### Source-Agnostic Ingestion
 
-Content-specific loaders are isolated behind a shared document representation.
+All content sources are normalized into the same `Document` model.
 
-The RAG pipeline therefore does not need to know whether the original material came from a PDF, text file, directory, or another future source.
-
-### Multi-Collection Retrieval
-
-Multiple independent knowledge bases can coexist in the same vector database.
-
-Retrieval is explicitly scoped to a collection to prevent unrelated learning material from being mixed into the context.
+The RAG pipeline therefore does not depend on where the learning material originated.
 
 ### Dependency Inversion
 
 The RAG pipeline depends on abstractions for:
 
-- `Embedder`
-- `VectorStore`
-- `Generator`
+- Embeddings
+- Vector storage
+- Generation
 
-Concrete implementations such as OpenAI and PostgreSQL/pgvector can therefore be replaced without changing the core RAG orchestration.
+This keeps the core pipeline independent from specific providers.
 
-### Separate Indexing and Querying
+### Collection Isolation
 
-Indexing and querying are separate flows.
+Every query specifies a collection.
 
-Learning material can be processed offline, while questions are served against an already indexed knowledge base.
+Retrieval filters by collection before selecting the most relevant chunks.
 
-### Deterministic Chunk IDs
+### Idempotent Ingestion
 
-Chunk IDs are generated deterministically from the collection, metadata, and content.
+Chunk IDs are generated deterministically.
 
-PostgreSQL uses UPSERT operations so repeated ingestion of the same material does not create duplicate chunks.
+Re-ingesting the same content updates the existing records instead of creating duplicates.
 
-### Batched Embeddings
+### Separate Indexing and Query Paths
 
-Embedding requests are processed in batches to reduce the number of API requests and support larger knowledge bases more efficiently.
+Ingestion is an offline/update operation.
 
-### Grounded Generation
+Question answering is an online retrieval and generation operation.
 
-Retrieved chunks are supplied to the LLM as context.
+This keeps expensive document processing out of the request path.
 
-The generator is instructed not to answer beyond the retrieved material when sufficient information is unavailable.
+### MCP as an Integration Layer
 
-### IAM Database Authentication
+MCP is not required for the RAG pipeline itself.
 
-The AWS deployment uses temporary IAM-generated authentication tokens for Aurora PostgreSQL instead of storing a long-lived database password in the application.
+It is used as an integration layer so external AI clients and agents can access the RAG system through a standard tool interface.
 
-### Secret Management
+### Secrets Outside the Application
 
-Application secrets are kept outside the Docker image and injected at runtime through AWS Secrets Manager.
+Production secrets are not stored in source control or inside the Docker image.
+
+AWS Secrets Manager provides sensitive application credentials at runtime.
 
 ## Skill
 
-`SKILL.md` describes how an AI agent should use the knowledge system.
+The repository also contains an Agent Skill:
 
-The Skill is named:
+`learning-material-rag`
 
-```text
-learning-knowledge
-```
+The Skill instructs compatible AI agents how to use the `ask_knowledge` MCP tool to query indexed learning material.
 
-It uses the MCP tool:
-
-```text
-ask_knowledge(question, collection)
-```
-
-This separates three concerns:
+The Skill and MCP server serve different purposes:
 
 ```text
 Skill
   |
-  | instructions / workflow
+  | tells the agent when and how
+  | to use the capability
   v
-MCP
+MCP Tool
   |
-  | tool interface
+  | provides the actual capability
   v
-RAG
-  |
-  | retrieval + generation
-  v
-Knowledge Collections
+RAG Pipeline
 ```
 
-The Skill queries material that has already been indexed. Ingestion remains a separate process.
+Installing the Skill does not automatically provide access to a hosted MCP server. The MCP server must be configured separately by the client.
+
+## Current Limitations
+
+- Chunking is currently sentence/character based rather than token-aware.
+- Chunks do not currently overlap.
+- Retrieval uses vector similarity without a reranking stage.
+- Vector dimensions are currently tied to the selected embedding model.
+- Directory ingestion currently supports text files.
+- PDF ingestion expects extractable text and does not perform OCR.
+- Source reporting is basic rather than full inline citation generation.
+- Remote authentication currently uses a static Bearer token rather than per-user OAuth.
+- A stable always-on public MCP endpoint is not currently provided.
 
 ## Future Improvements
 
-- Additional document source adapters
-- Token-aware chunking
+Potential improvements include:
+
+- Token-aware recursive chunking
 - Chunk overlap
-- Retrieval reranking
-- Retrieval evaluation using a golden dataset
-- Incremental indexing based on content changes
-- HNSW or IVFFlat vector indexes for larger datasets
-- Additional embedding and LLM providers
+- Hybrid vector and keyword retrieval
+- Reranking
+- Retrieval evaluation and golden datasets
+- Incremental indexing
+- HNSW or IVFFlat indexes for larger datasets
+- Additional learning-source adapters
+- Additional embedding and generation providers
 - Improved source citations
-- Authentication and rate limiting for public MCP access
-- Stable production endpoint for the remote MCP servicecls
+- Per-user authentication
+- OAuth support
+- Rate limiting
+- Stable production MCP endpoint
+
+## Security
+
+Do not commit:
+
+- `.env`
+- API keys
+- MCP access tokens
+- AWS credentials
+- Database credentials
+- Private or copyrighted learning material
+
+The repository is intended to contain the RAG infrastructure and integration code, not private learning content or credentials.
+
+## License
+
+Add the appropriate license for your intended use.

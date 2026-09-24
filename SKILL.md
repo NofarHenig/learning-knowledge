@@ -1,11 +1,11 @@
 ---
-name: learning-knowledge
-description: Ask questions about indexed learning material and receive grounded answers with sources. Use this skill when a user wants to query material stored in a Learning Knowledge collection.
+name: learning-material-rag
+description: Ask questions about indexed learning materials using RAG and receive grounded answers with sources. Use this skill when a user wants to query PDFs, notes, courses, documentation, or other material stored in a Learning Material RAG collection.
 ---
 
-# Learning Knowledge
+# Learning Material RAG
 
-Use this skill when the user wants to ask questions about learning material that has already been indexed into a Learning Knowledge collection.
+Use this skill when the user wants to ask questions about learning material that has already been indexed into a Learning Material RAG collection.
 
 The knowledge base can contain multiple independent collections, such as courses, PDFs, notes, documentation, or other learning material.
 
@@ -56,7 +56,7 @@ If the appropriate collection cannot be determined, ask the user which collectio
 
 ## Supported Learning Material
 
-The Learning Knowledge ingestion pipeline can normalize different learning sources into a common document format before indexing.
+The Learning Material RAG ingestion pipeline can normalize different learning sources into a common document format before indexing.
 
 Currently supported sources include:
 
