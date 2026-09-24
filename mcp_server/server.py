@@ -1,7 +1,11 @@
 import os
+import secrets
 
 from dotenv import load_dotenv
 from mcp.server import MCPServer
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
+from pydantic import AnyHttpUrl
 
 from rag.database_connection import get_postgres_connection_string
 from rag.openai_embedder import OpenAIEmbedder
@@ -11,6 +15,34 @@ from rag.rag_pipeline import RagPipeline
 
 
 load_dotenv()
+
+
+class StaticTokenVerifier(TokenVerifier):
+    def __init__(
+        self,
+        access_token: str,
+        resource_url: str
+    ):
+        self.access_token = access_token
+        self.resource_url = resource_url
+
+    async def verify_token(
+        self,
+        token: str
+    ) -> AccessToken | None:
+        if not secrets.compare_digest(
+            token,
+            self.access_token
+        ):
+            return None
+
+        return AccessToken(
+            token=token,
+            client_id="learning-knowledge-client",
+            scopes=["knowledge:read"],
+            resource=self.resource_url
+        )
+
 
 connection_string = get_postgres_connection_string()
 
@@ -29,7 +61,49 @@ rag = RagPipeline(
 )
 
 
-server = MCPServer("learning-knowledge")
+transport = os.getenv(
+    "MCP_TRANSPORT",
+    "stdio"
+)
+
+access_token = os.getenv("MCP_ACCESS_TOKEN")
+
+resource_url = os.getenv(
+    "MCP_RESOURCE_URL",
+    "http://localhost:8000/mcp"
+)
+
+
+if transport == "streamable-http":
+    if not access_token:
+        raise ValueError(
+            "MCP_ACCESS_TOKEN is required "
+            "for streamable-http transport"
+        )
+
+    server = MCPServer(
+        "learning-knowledge",
+        token_verifier=StaticTokenVerifier(
+            access_token=access_token,
+            resource_url=resource_url
+        ),
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl(
+                "https://learning-knowledge.local"
+            ),
+            resource_server_url=AnyHttpUrl(
+                resource_url
+            ),
+            required_scopes=[
+                "knowledge:read"
+            ],
+            validate_token_resource=True
+        )
+    )
+else:
+    server = MCPServer(
+        "learning-knowledge"
+    )
 
 
 @server.tool()
@@ -70,11 +144,6 @@ def ask_knowledge(
 
 
 if __name__ == "__main__":
-    transport = os.getenv(
-        "MCP_TRANSPORT",
-        "stdio"
-    )
-
     if transport == "streamable-http":
         server.run(
             transport="streamable-http",
