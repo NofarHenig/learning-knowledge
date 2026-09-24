@@ -5,7 +5,7 @@ description: Query indexed learning material using RAG and return grounded answe
 
 # Learning Knowledge RAG
 
-Use this skill when the user wants to ask questions about indexed learning material.
+Use this skill when the user wants to ask questions about learning material that has already been indexed into a Learning Knowledge collection.
 
 The knowledge base can contain multiple independent collections, such as courses, PDFs, transcripts, or other learning material.
 
@@ -17,11 +17,7 @@ The knowledge base can contain multiple independent collections, such as courses
    - The user's question.
    - The selected collection.
 
-3. The tool will:
-   - Embed the question.
-   - Search only the selected knowledge collection for relevant chunks.
-   - Provide the retrieved material to the LLM.
-   - Generate an answer grounded in the retrieved context.
+3. The tool retrieves relevant material only from the selected collection and generates an answer grounded in that material.
 
 4. Return the generated answer to the user.
 
@@ -45,7 +41,7 @@ The tool returns:
 
 ## Knowledge Collections
 
-Each collection represents an independent set of learning material.
+Each collection represents an independent set of indexed learning material.
 
 Examples:
 
@@ -56,24 +52,26 @@ Examples:
 
 Queries must be scoped to the appropriate collection so that material from unrelated collections is not mixed during retrieval.
 
+If the appropriate collection cannot be determined, ask the user which collection should be used rather than guessing.
+
 ## Supported Learning Material
 
-The ingestion system can normalize different learning sources into a common document format.
+The Learning Knowledge ingestion pipeline can normalize different learning sources into a common document format before indexing.
 
 Currently supported sources include:
 
 - PDF files.
 - Text files.
 - Directories containing text files.
-- Udemy course transcripts when the transcript data is available to the ingestion system.
+- Udemy course transcripts when transcript data has already been made available to the ingestion system.
 
-All supported sources are converted into documents before entering the shared RAG pipeline.
+The Skill queries material that has already been indexed. It does not download or ingest new learning material itself.
 
 ## Grounding Rules
 
-Base the answer on the material retrieved from the selected collection.
+Base the answer only on material retrieved from the selected collection.
 
-If the retrieved context does not contain enough information to answer the question, say that the available learning material does not provide enough information.
+If the retrieved context does not contain enough information to answer the question, clearly say that the available learning material does not provide enough information.
 
 Do not invent information that is not supported by the retrieved context.
 
@@ -84,8 +82,8 @@ Do not use material from another collection to fill missing information.
 Provide:
 
 1. A clear answer to the user's question.
-2. Relevant examples or code when supported by the learning material.
-3. The sources used to answer the question.
+2. Relevant examples or code when supported by the retrieved learning material.
+3. The sources returned by the tool.
 
 ## Example
 
@@ -102,7 +100,7 @@ For a Python learning collection, call:
 
 Return the grounded answer together with the retrieved sources.
 
-For another collection, the same tool can be reused:
+The same tool can be reused for another collection:
 
 `ask_knowledge(
     question="What is an IAM role?",
