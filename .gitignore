@@ -8,3 +8,4 @@ data/lectures.json
 
 materials/*
 !materials/.gitkeep
+run-mcp.cmd
