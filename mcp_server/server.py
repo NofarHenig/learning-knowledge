@@ -7,6 +7,7 @@ from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from pydantic import AnyHttpUrl
 
+from ingestion.knowledge_ingester import KnowledgeIngester
 from rag.database_connection import get_postgres_connection_string
 from rag.openai_embedder import OpenAIEmbedder
 from rag.openai_generator import OpenAIGenerator
@@ -60,6 +61,11 @@ rag = RagPipeline(
     generator=generator
 )
 
+ingester = KnowledgeIngester(
+    embedder=embedder,
+    vector_store=vector_store
+)
+
 
 transport = os.getenv(
     "MCP_TRANSPORT",
@@ -103,6 +109,43 @@ if transport == "streamable-http":
 else:
     server = MCPServer(
         "learning-knowledge"
+    )
+
+
+@server.tool()
+def add_knowledge(
+    text: str,
+    filename: str,
+    collection: str
+) -> str:
+    """
+    Add text content to a knowledge collection so it can
+    later be queried through the RAG system.
+    """
+    if not text.strip():
+        raise ValueError(
+            "Text cannot be empty"
+        )
+
+    if not filename.strip():
+        raise ValueError(
+            "Filename cannot be empty"
+        )
+
+    if not collection.strip():
+        raise ValueError(
+            "Collection cannot be empty"
+        )
+
+    chunk_count = ingester.ingest_text(
+        text=text,
+        filename=filename,
+        collection=collection
+    )
+
+    return (
+        f"Added '{filename}' to collection "
+        f"'{collection}' as {chunk_count} chunks."
     )
 
 
