@@ -1,13 +1,13 @@
 ---
-name: learning-knowledge-rag
-description: Query indexed learning material using RAG and return grounded answers with sources. Use this skill when a user asks questions about learning material stored in a Learning Knowledge collection.
+name: learning-knowledge
+description: Ask questions about indexed learning material and receive grounded answers with sources. Use this skill when a user wants to query material stored in a Learning Knowledge collection.
 ---
 
-# Learning Knowledge RAG
+# Learning Knowledge
 
 Use this skill when the user wants to ask questions about learning material that has already been indexed into a Learning Knowledge collection.
 
-The knowledge base can contain multiple independent collections, such as courses, PDFs, transcripts, or other learning material.
+The knowledge base can contain multiple independent collections, such as courses, PDFs, notes, documentation, or other learning material.
 
 ## Workflow
 
@@ -63,7 +63,8 @@ Currently supported sources include:
 - PDF files.
 - Text files.
 - Directories containing text files.
-- Udemy course transcripts when transcript data has already been made available to the ingestion system.
+
+The architecture is designed so additional source adapters can be added without changing the shared RAG pipeline.
 
 The Skill queries material that has already been indexed. It does not download or ingest new learning material itself.
 
