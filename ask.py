@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
+from rag.database_connection import get_postgres_connection_string
 from rag.openai_embedder import OpenAIEmbedder
 from rag.openai_generator import OpenAIGenerator
 from rag.postgres_vector_store import PostgresVectorStore
@@ -10,13 +11,8 @@ from rag.rag_pipeline import RagPipeline
 
 load_dotenv()
 
-connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
+connection_string = get_postgres_connection_string()
 collection = os.getenv("KNOWLEDGE_COLLECTION")
-
-if not connection_string:
-    raise ValueError(
-        "POSTGRES_CONNECTION_STRING is not configured"
-    )
 
 if not collection:
     raise ValueError(

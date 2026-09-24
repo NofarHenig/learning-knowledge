@@ -5,3 +5,4 @@ psycopg[binary]
 pgvector
 mcp[cli]
 pypdf
+boto3

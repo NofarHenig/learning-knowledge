@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from mcp.server import MCPServer
 
+from rag.database_connection import get_postgres_connection_string
 from rag.openai_embedder import OpenAIEmbedder
 from rag.openai_generator import OpenAIGenerator
 from rag.postgres_vector_store import PostgresVectorStore
@@ -11,13 +12,7 @@ from rag.rag_pipeline import RagPipeline
 
 load_dotenv()
 
-connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
-
-if not connection_string:
-    raise ValueError(
-        "POSTGRES_CONNECTION_STRING is not configured"
-    )
-
+connection_string = get_postgres_connection_string()
 
 embedder = OpenAIEmbedder()
 
@@ -75,4 +70,20 @@ def ask_knowledge(
 
 
 if __name__ == "__main__":
-    server.run()
+    transport = os.getenv(
+        "MCP_TRANSPORT",
+        "stdio"
+    )
+
+    if transport == "streamable-http":
+        server.run(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=8000,
+            stateless_http=True,
+            json_response=True
+        )
+    else:
+        server.run(
+            transport="stdio"
+        )

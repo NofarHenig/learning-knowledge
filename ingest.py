@@ -1,9 +1,8 @@
-import os
-
 from dotenv import load_dotenv
 
 from ingestion.source_factory import create_source
 from rag.chunker import chunk_document
+from rag.database_connection import get_postgres_connection_string
 from rag.openai_embedder import OpenAIEmbedder
 from rag.postgres_vector_store import PostgresVectorStore
 
@@ -13,14 +12,12 @@ BATCH_SIZE = 50
 
 load_dotenv()
 
-connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
+connection_string = get_postgres_connection_string()
+
+import os
+
 collection = os.getenv("KNOWLEDGE_COLLECTION")
 source_path = os.getenv("KNOWLEDGE_SOURCE")
-
-if not connection_string:
-    raise ValueError(
-        "POSTGRES_CONNECTION_STRING is not configured"
-    )
 
 if not collection:
     raise ValueError(
